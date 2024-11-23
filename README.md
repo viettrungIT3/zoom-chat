@@ -23,6 +23,7 @@ A real-time chat application built with Node.js, Socket.IO, and MongoDB, contain
 
 
 ## Project Structure
+```
 zoom-chat\
  ├──src\
  │  ├──public\
@@ -35,3 +36,4 @@ zoom-chat\
  ├──docker-compose.yml
  ├──Dockerfile
  └──README.md
+ ```
