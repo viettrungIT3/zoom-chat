@@ -27,6 +27,10 @@ A real-time chat application built with Node.js, Socket.IO, and MongoDB, contain
 zoom-chat\
  ├──src\
  │  ├──public\
+ │  │  ├──css\
+ │  │  │  └──style.css
+ │  │  ├──js\
+ │  │  │  └──client.js
  │  │  └──index.html
  │  ├──server.js
  │  └──package.json
@@ -37,3 +41,9 @@ zoom-chat\
  ├──Dockerfile
  └──README.md
  ```
+
+ ## Running the application
+ 1. Install docker and docker compose
+ 2. Copy the `.env.example` file to `.env` and set the required variables
+ 3. Run `docker compose up --build` to start the application
+ 4. Open your browser and navigate to `http://localhost:3000` to access the application
