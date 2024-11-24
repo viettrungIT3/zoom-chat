@@ -33,6 +33,14 @@ Zoom Chat is a real-time chat application built using **Node.js**, **Socket.IO**
 4. **Real-Time Communication**:
    - Powered by Socket.IO for live interactions.
 
+
+### Screenshots
+<div style="display: flex; flex-direction: row; justify-content: space-around;">
+    <img src="https://github.com/user-attachments/assets/fb67ca5d-f2be-4437-b7b2-f3b8fb487bd5" alt="Screenshot 1" width="48%">
+    <img src="https://github.com/user-attachments/assets/dcc62ee3-6a31-401e-98f6-bbf66fc7ac70" alt="Screenshot 2" width="48%">
+</div>
+
+
 ---
 
 ## Project Structure
