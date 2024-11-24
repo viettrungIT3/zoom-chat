@@ -1,4 +1,4 @@
-require('dotenv').config();
+require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
@@ -9,15 +9,23 @@ const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: process.env.SOCKET_CORS_ORIGIN,
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+  },
 });
 
 const PORT = process.env.PORT || 3000;
-const MONGO_URL = process.env.MONGODB_URL;
+const MONGO_URL =
+  process.env.NODE_ENV === "production"
+    ? process.env.MONGODB_URI // Heroku/Production MongoDB
+    : process.env.MONGODB_URL; // Local MongoDB
 const TOTAL_ROOMS = parseInt(process.env.TOTAL_ROOMS) || 10;
 const MAX_MESSAGES_LOAD = parseInt(process.env.MAX_MESSAGES_LOAD) || 50;
+const NUMBER_RETRY_CONNECT_DB = parseInt(process.env.NUMBER_RETRY_CONNECT_DB) || 5;
+var count_retry_connect_db = 0;
 
+let isDbConnected = false; // Biến trạng thái kết nối DB
+
+// connect MongoDB with retry logic
 function connectWithRetry() {
   mongoose
     .connect(MONGO_URL, {
@@ -25,28 +33,42 @@ function connectWithRetry() {
       retryWrites: true,
       w: "majority",
     })
-    .then(() => console.log("MongoDB connected successfully"))
+    .then(() => {
+      console.log("MongoDB connected successfully");
+      isDbConnected = true;
+    })
     .catch((err) => {
-      console.error(
-        "MongoDB connection unsuccessful, retry after 5 seconds.",
-        err
-      );
-      setTimeout(connectWithRetry, 5000);
+      isDbConnected = false;
+      if (count_retry_connect_db < NUMBER_RETRY_CONNECT_DB) {
+        count_retry_connect_db++;
+        console.error(
+          "MongoDB connection unsuccessful, retrying in 5 seconds.",
+          err
+        );
+        setTimeout(connectWithRetry, 5000);
+      } else {
+        console.error("MongoDB connection failed after 5 retries.");
+      }
     });
 }
 
 connectWithRetry();
 
-const MessageSchema = new mongoose.Schema({
-  room: String,
-  userId: String,
-  message: String,
-  type: { type: String, enum: ["message", "system"] },
-  timestamp: { type: Date, default: Date.now },
-});
+// Define Schema and Model if DB connected successfully
+let Message;
+if (isDbConnected) {
+  const MessageSchema = new mongoose.Schema({
+    room: String,
+    userId: String,
+    message: String,
+    type: { type: String, enum: ["message", "system"] },
+    timestamp: { type: Date, default: Date.now },
+  });
 
-const Message = mongoose.model("Message", MessageSchema);
+  Message = mongoose.model("Message", MessageSchema);
+}
 
+// Initialize room list
 const rooms = {};
 for (let i = 1; i <= TOTAL_ROOMS; i++) {
   rooms[`Room ${i}`] = {
@@ -58,6 +80,7 @@ for (let i = 1; i <= TOTAL_ROOMS; i++) {
 
 app.use(express.static("public"));
 
+// API get room list
 app.get("/rooms", async (req, res) => {
   const roomList = Object.keys(rooms).map((roomName) => ({
     name: roomName,
@@ -66,7 +89,12 @@ app.get("/rooms", async (req, res) => {
   res.json(roomList);
 });
 
+// API get messages in room
 app.get("/messages/:roomName", async (req, res) => {
+  if (!isDbConnected || !Message) {
+    return res.json([]); // Trả về mảng rỗng nếu không có DB
+  }
+
   try {
     const messages = await Message.find({
       room: req.params.roomName,
@@ -79,9 +107,11 @@ app.get("/messages/:roomName", async (req, res) => {
   }
 });
 
+// Socket.io logic
 io.on("connection", (socket) => {
   console.log(`New client connected: ${socket.id}`);
 
+  // Send room list when connected
   socket.emit(
     "room-list-update",
     Object.keys(rooms).map((roomName) => ({
@@ -90,17 +120,20 @@ io.on("connection", (socket) => {
     }))
   );
 
+  // Handle join room
   socket.on("join-room", async (roomName) => {
     socket.join(roomName);
     rooms[roomName].members.add(socket.id);
 
-    const systemMessage = new Message({
-      room: roomName,
-      userId: "SYSTEM",
-      message: `User ${socket.id} has joined the room.`,
-      type: "system",
-    });
-    await systemMessage.save();
+    if (isDbConnected && Message) {
+      const systemMessage = new Message({
+        room: roomName,
+        userId: "SYSTEM",
+        message: `User ${socket.id} has joined the room.`,
+        type: "system",
+      });
+      await systemMessage.save();
+    }
 
     socket.to(roomName).emit("user-joined", {
       userId: socket.id,
@@ -116,14 +149,17 @@ io.on("connection", (socket) => {
     );
   });
 
+  // Handle send message
   socket.on("send-message", async ({ room, message }) => {
-    const newMessage = new Message({
-      room: room,
-      userId: socket.id,
-      message: message,
-      type: "message",
-    });
-    await newMessage.save();
+    if (isDbConnected && Message) {
+      const newMessage = new Message({
+        room: room,
+        userId: socket.id,
+        message: message,
+        type: "message",
+      });
+      await newMessage.save();
+    }
 
     socket.to(room).emit("receive-message", {
       userId: socket.id,
@@ -131,17 +167,20 @@ io.on("connection", (socket) => {
     });
   });
 
+  // Handle leave room
   socket.on("leave-room", async (roomName) => {
     socket.leave(roomName);
     rooms[roomName].members.delete(socket.id);
 
-    const systemMessage = new Message({
-      room: roomName,
-      userId: "SYSTEM",
-      message: `User ${socket.id} has left the room.`,
-      type: "system",
-    });
-    await systemMessage.save();
+    if (isDbConnected && Message) {
+      const systemMessage = new Message({
+        room: roomName,
+        userId: "SYSTEM",
+        message: `User ${socket.id} has left the room.`,
+        type: "system",
+      });
+      await systemMessage.save();
+    }
 
     socket.to(roomName).emit("user-left", {
       userId: socket.id,
@@ -157,19 +196,22 @@ io.on("connection", (socket) => {
     );
   });
 
+  // Handle when user disconnect
   socket.on("disconnect", async () => {
     console.log(`Client disconnected: ${socket.id}`);
     for (let roomName in rooms) {
       if (rooms[roomName].members.has(socket.id)) {
         rooms[roomName].members.delete(socket.id);
 
-        const systemMessage = new Message({
-          room: roomName,
-          userId: "SYSTEM",
-          message: `User ${socket.id} has disconnected.`,
-          type: "system",
-        });
-        await systemMessage.save();
+        if (isDbConnected && Message) {
+          const systemMessage = new Message({
+            room: roomName,
+            userId: "SYSTEM",
+            message: `User ${socket.id} has disconnected.`,
+            type: "system",
+          });
+          await systemMessage.save();
+        }
 
         socket.to(roomName).emit("user-left", {
           userId: socket.id,
@@ -188,6 +230,7 @@ io.on("connection", (socket) => {
   });
 });
 
+// Start server
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

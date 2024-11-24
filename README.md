@@ -87,7 +87,7 @@ zoom-chat\
 
 ## How to Run
 
-### Run with Docker
+### Run with local Docker
 #### Build the Docker image:
  1. Install docker and docker compose
  2. Copy the `.env.example` file to `.env` and set the required variables
@@ -101,6 +101,14 @@ zoom-chat\
  4. Run `npm install` to install the dependencies
  5. Run `npm start` to start the application
  6. Open your browser and navigate to `http://localhost:3000` to access the application
+
+#### Run with heroku
+ 1. Install heroku cli
+ 2. Run `heroku login` to login to your heroku account
+ 3. Run `heroku create <app-name>` to create a new heroku app
+ 4. Run `heroku container:push web --app <app-name>` to push the container to heroku
+ 5. Run `heroku container:release web --app <app-name>` to release the container
+ 6. Run `heroku open --app <app-name>` to open the application
 
 ### Future Improvements
 
